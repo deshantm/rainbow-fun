@@ -6,6 +6,24 @@ import random
 # Initialize Pygame
 pygame.init()
 
+class Checkpoint:
+    def __init__(self, position, radius, checkpoint_number, visible=True):
+        self.position = position
+        self.radius = radius
+        self.checkpoint_number = checkpoint_number
+        self.visible = visible
+
+    def draw(self, surface, font):
+        if self.visible:
+            pygame.draw.circle(surface, (0, 255, 0), self.position, self.radius, 2)
+        text = font.render(str(self.checkpoint_number), True, (255, 255, 255))
+        text_rect = text.get_rect(center=(self.position[0], self.position[1] - self.radius - 10))
+        surface.blit(text, text_rect)
+
+
+
+
+
 # Game Window
 screen_width = 800
 screen_height = 600
@@ -82,6 +100,25 @@ class Player:
         self.speed = 5
         self.angle = 0  # New attribute for the kart's angle
         self.moving = False  # New attribute to track movement
+        self.next_checkpoint_index = 0
+        self.laps_completed = 0
+        self.current_rank = 0
+        self.checkpoints = [] 
+
+
+    def check_checkpoint_crossing(self, checkpoints):
+        next_checkpoint = checkpoints[self.next_checkpoint_index]
+        dx = self.rect.centerx - next_checkpoint.position[0]
+        dy = self.rect.centery - next_checkpoint.position[1]
+        distance = math.sqrt(dx**2 + dy**2)
+        if distance <= next_checkpoint.radius:
+            self.next_checkpoint_index = (self.next_checkpoint_index + 1) % len(checkpoints)
+            if self.next_checkpoint_index == 0:
+                self.laps_completed += 1
+
+  
+
+
 
     def draw_directional_arrow(self, surface):
         arrow_length = 40
@@ -105,11 +142,29 @@ class Player:
         else:
             self.moving = False
 
-    def update(self):
+    def update(self, checkpoints):
         if self.moving:
             # Move forward in the direction the kart is facing
             self.rect.x += self.speed * math.cos(math.radians(self.angle))
             self.rect.y += self.speed * math.sin(math.radians(self.angle))
+
+        # Use the passed checkpoints parameter
+        self.check_checkpoint_crossing(checkpoints)
+
+
+    def check_checkpoint_crossing(self, checkpoints):
+        next_checkpoint = checkpoints[self.next_checkpoint_index]
+        dx = self.rect.centerx - next_checkpoint.position[0]
+        dy = self.rect.centery - next_checkpoint.position[1]
+        distance = math.sqrt(dx**2 + dy**2)
+        if distance <= next_checkpoint.radius:
+            print(f"Checkpoint {self.next_checkpoint_index} crossed")
+            self.next_checkpoint_index = (self.next_checkpoint_index + 1) % len(checkpoints)
+            if self.next_checkpoint_index == 0:
+                self.laps_completed += 1
+                print("Lap completed")
+
+
 
     def draw(self, surface):
         # Rotate the kart image based on the current angle
@@ -143,7 +198,10 @@ class Player:
 
 
 
-
+def update_rankings(players):
+        players.sort(key=lambda p: (-p.laps_completed, -p.next_checkpoint_index))
+        for i, player in enumerate(players):
+            player.current_rank = i + 1
 
 # Adjust the character selection positioning
 character_selection = {}
@@ -267,6 +325,15 @@ def main():
         start_x += 100
         start_y += 100 
 
+
+    checkpoints = [
+        Checkpoint((100, 150), 20, 1),
+        Checkpoint((300, 250), 20, 2),
+        # Add more checkpoints as needed
+    ]
+
+
+    font = pygame.font.SysFont(None, 36)
     running = True
     while running:
         for event in pygame.event.get():
@@ -274,12 +341,12 @@ def main():
                 running = False
 
         player.handle_keys()
-        player.update()
+     
 
             # Update AI characters
         for ai_player in ai_players:
             ai_player.ai_move()
-            ai_player.update()
+
             if ai_player.rect.left > screen_width:
                 ai_player.rect.right = 0
             if ai_player.rect.right < 0:
@@ -302,6 +369,9 @@ def main():
             player.rect.top = screen_height
 
 
+        player.update(checkpoints)
+        for ai_player in ai_players:
+            ai_player.update(checkpoints)
 
 
         screen.blit(background_image, (0, 0))
@@ -319,6 +389,18 @@ def main():
             # Draw AI characters
         for ai_player in ai_players:
             ai_player.draw(screen)
+
+
+        for checkpoint in checkpoints:
+            checkpoint.draw(screen, font)
+
+        update_rankings([player] + ai_players)
+
+        for i, p in enumerate([player] + ai_players):
+            rank_text = font.render(f"Player {p.current_rank}: {p.laps_completed} Laps", True, BLACK)
+        screen.blit(rank_text, (10, 10 + 30 * i))
+
+
 
         pygame.display.update()
 
