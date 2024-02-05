@@ -72,6 +72,7 @@ cup_images = {
 kart_image = pygame.image.load('kart.jpg')
 kart_image = pygame.transform.scale(kart_image, (50, 30))
 
+ruby_image = pygame.image.load('ruby.jpg')
 
 
 try:
@@ -92,7 +93,7 @@ except pygame.error as e:
 
 # Game Classes
 class Player:
-    def __init__(self, kart_image, char_image, position):
+    def __init__(self, kart_image, char_image, char_name, position):
         self.kart_image = kart_image
         self.char_image = char_image
         self.rect = self.kart_image.get_rect()
@@ -104,21 +105,19 @@ class Player:
         self.laps_completed = 0
         self.current_rank = 0
         self.checkpoints = [] 
+        self.checkpoint_crossed = False
+        self.character_name = char_name.capitalize()
+        self.rubies_collected = 0  # New attribute to track collected rubies
 
 
-    def check_checkpoint_crossing(self, checkpoints):
-        next_checkpoint = checkpoints[self.next_checkpoint_index]
-        dx = self.rect.centerx - next_checkpoint.position[0]
-        dy = self.rect.centery - next_checkpoint.position[1]
-        distance = math.sqrt(dx**2 + dy**2)
-        if distance <= next_checkpoint.radius:
-            self.next_checkpoint_index = (self.next_checkpoint_index + 1) % len(checkpoints)
-            if self.next_checkpoint_index == 0:
-                self.laps_completed += 1
-
-  
-
-
+    def check_ruby_collision(self, rubies):
+        for ruby in rubies:
+            if self.rect.colliderect(ruby.rect) and not ruby.picked_up:
+                ruby.picked_up = True
+                self.rubies_collected += 1  # Increment the ruby count
+                self.speed += 2  # Increase speed temporarily
+                # Set a timer to reset the speed after a certain duration
+                pygame.time.set_timer(pygame.USEREVENT, 5000)  # 5 seconds
 
     def draw_directional_arrow(self, surface):
         arrow_length = 40
@@ -143,27 +142,49 @@ class Player:
             self.moving = False
 
     def update(self, checkpoints):
+        # If the player is moving, update position
         if self.moving:
-            # Move forward in the direction the kart is facing
+            # Move forward based on angle
             self.rect.x += self.speed * math.cos(math.radians(self.angle))
             self.rect.y += self.speed * math.sin(math.radians(self.angle))
+            
+            # Make sure the player's position is within screen bounds
+            if self.rect.left > screen_width:
+                self.rect.right = 0
+            if self.rect.right < 0:
+                self.rect.left = screen_width
+            if self.rect.top > screen_height:
+                self.rect.bottom = 0
+            if self.rect.bottom < 0:
+                self.rect.top = screen_height
 
-        # Use the passed checkpoints parameter
+        # Check if the player has crossed a checkpoint
         self.check_checkpoint_crossing(checkpoints)
 
 
+
     def check_checkpoint_crossing(self, checkpoints):
+        # Ensure we have checkpoints to check against
+        if not checkpoints:
+            return
+        
+        # Get the next checkpoint to check against
         next_checkpoint = checkpoints[self.next_checkpoint_index]
+        
+        # Calculate the distance from the player to the next checkpoint
         dx = self.rect.centerx - next_checkpoint.position[0]
         dy = self.rect.centery - next_checkpoint.position[1]
         distance = math.sqrt(dx**2 + dy**2)
+        
+        # Check if the player has crossed the checkpoint
         if distance <= next_checkpoint.radius:
-            print(f"Checkpoint {self.next_checkpoint_index} crossed")
+            print(f"Checkpoint {self.next_checkpoint_index} crossed by {self.character_name}")
+            # Increment the checkpoint index, wrap around if at the end
             self.next_checkpoint_index = (self.next_checkpoint_index + 1) % len(checkpoints)
+            # If we've wrapped around, it means we've completed a lap
             if self.next_checkpoint_index == 0:
                 self.laps_completed += 1
-                print("Lap completed")
-
+                print(f"Lap completed by {self.character_name}")
 
 
     def draw(self, surface):
@@ -196,12 +217,45 @@ class Player:
             self.angle += random.choice([-10, 10])
 
 
+class Ruby:
+    def __init__(self, image, position):
+        self.image = pygame.transform.scale(image, (30, 30))  # Scale the image
+        self.rect = self.image.get_rect()
+        self.rect.topleft = position
+        self.picked_up = False
+
+    def draw(self, surface):
+        if not self.picked_up:
+            surface.blit(self.image, self.rect)
+
+
+
+
+def draw_text(surface, text, position, font, color=(255, 255, 255)):  # Default color is white
+    text_surface = font.render(text, True, color)
+    surface.blit(text_surface, position)
+
 
 
 def update_rankings(players):
         players.sort(key=lambda p: (-p.laps_completed, -p.next_checkpoint_index))
         for i, player in enumerate(players):
             player.current_rank = i + 1
+
+
+def load_checkpoints(track_name, race_number):
+    checkpoints = []
+    try:
+        filename = f'{track_name}-{race_number}_checkpoints.txt'
+        print(f"Loading checkpoints from {filename}")
+        with open(f'{track_name}-{race_number}-checkpoints.txt', 'r') as file:
+            for line in file:
+                _, x, y = line.strip().split(', ')
+                checkpoints.append(Checkpoint((int(x), int(y)), 20, len(checkpoints) + 1))
+    except FileNotFoundError:
+        print(f"No checkpoint file found for {track_name}.")
+        
+    return checkpoints
 
 # Adjust the character selection positioning
 character_selection = {}
@@ -268,6 +322,13 @@ def select_cup():
     return selected_cup
 
 
+def get_character_name_from_image_path(image_path):
+    # Extract the base name of the file (e.g., 'mario.jpg')
+    base_name = os.path.basename(image_path)
+    # Split the base name by the dot and return the first part (e.g., 'mario')
+    return os.path.splitext(base_name)[0].capitalize()
+
+
 def load_track(cup_name, race_number):
     """
     Load the track image based on the cup name and race number.
@@ -303,34 +364,39 @@ def main():
     char_image = pygame.transform.scale(char_image, (50, 30))
 
     selected_cup = select_cup()
+   
 
  
     # Load the track for the current race
     current_track = load_track(selected_cup, race_number)
+    checkpoints = load_checkpoints(selected_cup, race_number)
 
-    # Placeholder for starting race logic
-    # start_race()
-    
-    player = Player(kart_image, char_image, (screen_width // 2, screen_height // 2))
+
+
+    player = Player(kart_image, char_image, selected_character, (screen_width // 2, screen_height // 2))
+    player.checkpoints = checkpoints  # Assign the loaded checkpoints to the player
+
 
     start_x = player.rect.x + 100
     start_y = player.rect.y + 100
 
+    # Do the same for AI players
     for ai_char in ai_characters:
         ai_image = character_images[ai_char]
-        # You might want to set different starting positions for each AI character
-
-        ai_player = Player(kart_image, ai_image, (start_x, start_y))
+        ai_player = Player(kart_image, ai_image, ai_char, (start_x, start_y))
+        ai_player.checkpoints = checkpoints  # Assign the loaded checkpoints to the AI player
         ai_players.append(ai_player)
-        start_x += 100
-        start_y += 100 
 
 
-    checkpoints = [
-        Checkpoint((100, 150), 20, 1),
-        Checkpoint((300, 250), 20, 2),
-        # Add more checkpoints as needed
-    ]
+    margin = 50  # Margin to avoid placing rubies too close to the edges
+
+    def random_ruby_position():
+        x = random.randint(margin, screen_width - margin)
+        y = random.randint(margin, screen_height - margin)
+        return (x, y)
+
+    # Generate an array of 6 rubies with random positions
+    rubies = [Ruby(ruby_image, random_ruby_position()) for _ in range(6)]
 
 
     font = pygame.font.SysFont(None, 36)
@@ -383,6 +449,12 @@ def main():
             # update_race()
 
         
+        player.check_ruby_collision(rubies)
+
+        # Draw rubies
+        for ruby in rubies:
+            ruby.draw(screen)
+
 
         player.draw(screen)
 
@@ -396,10 +468,23 @@ def main():
 
         update_rankings([player] + ai_players)
 
+    
+        # Inside the main game loop, where you draw the leaderboard:
         for i, p in enumerate([player] + ai_players):
-            rank_text = font.render(f"Player {p.current_rank}: {p.laps_completed} Laps", True, BLACK)
-        screen.blit(rank_text, (10, 10 + 30 * i))
+            lap_text = f"{p.character_name}: Lap {p.laps_completed}"
+            rank_text = f"Rank: {p.current_rank}"
+            ruby_text = f"Rubies: {p.rubies_collected}"  # Display the number of rubies collected
 
+            GREY = (128, 128, 128)
+
+            draw_text(screen, lap_text, (10, 30 * i), font, GREY)
+            draw_text(screen, rank_text, (200, 30 * i), font, GREY)
+            draw_text(screen, ruby_text, (400, 30 * i), font, GREY)  # Display rubies collected
+
+
+
+
+           
 
 
         pygame.display.update()

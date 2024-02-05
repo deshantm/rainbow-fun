@@ -1,0 +1,10 @@
+mushroom-1, 381, 438
+mushroom-1, 457, 421
+mushroom-1, 530, 401
+mushroom-1, 500, 359
+mushroom-1, 376, 350
+mushroom-1, 250, 363
+mushroom-1, 236, 415
+mushroom-1, 298, 435
+mushroom-1, 626, 382
+mushroom-1, 562, 492
