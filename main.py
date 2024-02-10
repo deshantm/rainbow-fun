@@ -21,6 +21,15 @@ class Checkpoint:
         surface.blit(text, text_rect)
 
 
+class Obstacle:
+    def __init__(self, image, position):
+        self.image = pygame.transform.scale(image, (50, 50))  # Adjust size as needed
+        self.rect = self.image.get_rect()
+        self.rect.topleft = position
+
+    def draw(self, surface):
+        surface.blit(self.image, self.rect)
+
 
 
 
@@ -109,6 +118,20 @@ class Player:
         self.character_name = char_name.capitalize()
         self.rubies_collected = 0  # New attribute to track collected rubies
 
+    def lose_ruby(self):
+        if self.rubies_collected > 0:
+            self.rubies_collected -= 1
+            self.speed = max(5, self.speed - 2)  # Slow down, ensuring a minimum speed
+
+    def check_collision_with_others(self, obstacles, players):
+        for obstacle in obstacles:
+            if self.rect.colliderect(obstacle.rect):
+                self.lose_ruby()
+                break  # Break after losing one ruby per frame
+        for player in players:
+            if self != player and self.rect.colliderect(player.rect):
+                self.lose_ruby()
+                break  # Same here, one ruby loss per frame
 
     def check_ruby_collision(self, rubies):
         for ruby in rubies:
@@ -344,6 +367,9 @@ def load_track(cup_name, race_number):
 
 race_number = 1
 
+
+
+
 # Update Main Function
 def main():
     selected_character = select_character()
@@ -398,6 +424,11 @@ def main():
     # Generate an array of 6 rubies with random positions
     rubies = [Ruby(ruby_image, random_ruby_position()) for _ in range(6)]
 
+
+    obstacle_image = pygame.image.load('mario.jpg')
+
+    # After creating rubies
+    obstacles = [Obstacle(obstacle_image, random_ruby_position()) for _ in range(5)]  # Adjust number as needed
 
     font = pygame.font.SysFont(None, 36)
     running = True
@@ -465,6 +496,19 @@ def main():
 
         for checkpoint in checkpoints:
             checkpoint.draw(screen, font)
+
+
+        # Inside the main game loop
+
+        # Draw obstacles
+        #for obstacle in obstacles:
+        #    obstacle.draw(screen)
+
+        # Check for collisions with obstacles and other players
+        player.check_collision_with_others(obstacles, [player] + ai_players)
+        for ai_player in ai_players:
+            ai_player.check_collision_with_others(obstacles, [player] + ai_players)
+
 
         update_rankings([player] + ai_players)
 
